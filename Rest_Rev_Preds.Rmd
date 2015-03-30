@@ -7,9 +7,21 @@ output: html_document
 
 
 ```{r import data}
+library(plyr); library(dplyr); library(Metrics)
+
 train <- read.csv('data/train.csv', header = T)
 test <- read.csv('data/test.csv', header = T)
 
 summary(train)
+```
+
+```{r}
+
+hist(train$revenue)
+boxplot(train$revenue ~ train$City.Group)
+boxplot(train$revenue ~ train$Type)
+boxplot(train$revenue ~ train$City)
+
+View(count(train, City))
 ```
 
