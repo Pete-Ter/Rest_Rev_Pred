@@ -1,0 +1,15 @@
+---
+title: "Rest Rev Preds"
+author: "Peter Terlecky"
+date: "March 30, 2015"
+output: html_document
+---
+
+
+```{r import data}
+train <- read.csv('data/train.csv', header = T)
+test <- read.csv('data/test.csv', header = T)
+
+summary(train)
+```
+
