@@ -7,21 +7,160 @@ output: html_document
 
 
 ```{r import data}
-library(plyr); library(dplyr); library(Metrics)
+library(plyr); library(dplyr); library(Metrics); library(caret)
+library(rpivotTable); library(gbm); library(randomForest); library(FactoMineR)
 
 train <- read.csv('data/train.csv', header = T)
 test <- read.csv('data/test.csv', header = T)
 
 summary(train)
+str(train)
 ```
 
-```{r}
-
+```{r graphs}
+rpivotTable(train)
 hist(train$revenue)
 boxplot(train$revenue ~ train$City.Group)
 boxplot(train$revenue ~ train$Type)
 boxplot(train$revenue ~ train$City)
+boxplot(train$revenue)
 
 View(count(train, City))
+```
+
+```{r preProcessing}
+id <- train$Id
+train$Id <- NULL
+train$Open.Date <- as.Date(train$Open.Date, format = "%m/%d/%Y")
+train$Open.yr <- as.factor(format(train$Open.Date, "%Y")) 
+Open.Date <- train$Open.Date
+train$Open.Date <- NULL
+
+test$Open.Date <- as.Date(test$Open.Date, format = "%m/%d/%Y")
+test$Open.yr <- as.factor(format(test$Open.Date, "%Y")) 
+
+
+train$City.gr <- as.factor(ifelse(train$City=="Ä°stanbul", "Ä°stanbul", ifelse(train$City=="Ankara", "Ankara", as.character(train$City.Group))))
+
+test$City.gr <- as.factor(ifelse(test$City=="Ä°stanbul", "Ä°stanbul", ifelse(test$City=="Ankara", "Ankara", as.character(test$City.Group))))
+
+train$City <- NULL
+train$City.Group <- NULL
+
+num.predictors <- ncol(train) - 1
+
+levels(test$Type)[levels(test$Type)=="MB"] <- "IL"
+
+```
+
+```{r formulas}
+
+rf.form <- revenue ~ .
+pls.form <- revenue ~ .
+
+```
+
+
+```{r caret fitcontrol}
+fitControl <- trainControl(## 4-fold CV
+                           method = "repeatedcv",
+                           number = 4,
+                           ## repeated ten times
+                           repeats = 10)
+
+```
+
+```{r rF}
+
+rFGrid <-  expand.grid(.mtry=1:20)
+
+rfFit <- train(as.formula(rf.form),
+               data=train,
+               method="rf",
+               trControl=fitControl,
+               metric="RMSE",
+               verbose=T,
+               tuneGrid=rFGrid, 
+               importance=T
+               #ntree=2000
+               )
+rfFit
+
+varImp(rfFit, scale=T)
+```
+
+```{r PLS}
+
+plsFit <- train(as.formula(pls.form),
+               data=train,
+               method="pls",
+               trControl=fitControl,
+               metric="RMSE",
+               tuneLength=20,
+               preProc=c("center","scale")
+               )
+plsFit
+
+predict(plsFit,newdata=test)
+
+```
+
+
+```{r}
+apply(cor(select(train, starts_with("P")))-diag(ncol(select(train, starts_with("P")))), 2, max)
+
+apply(cor(select(train, starts_with("P")))-diag(ncol(select(train, starts_with("P")))), 2, mean)
+
+train$P36 <- NULL
+train$P9 <- NULL
+train$P10 <- NULL
+train$P26 <- NULL
+train$P16 <- NULL
+train$P25 <- NULL
+train$P32 <- NULL
+train$P34 <- NULL
+train$P18 <- NULL
+train$P13 <- NULL
+train$P14 <- NULL
+
+```
+
+
+```{r CrossVal}
+
+CrossVal <- function(data, y, mod, folds, number){
+  "y is the string name of the response"
+  set.seed(4)
+  
+  idx <- createMultiFolds(data[, y], k=folds, times=number)
+  #idx <- createFolds(data[, y], k=folds)
+  
+  rmse <- rep(0, folds*number)
+  
+  for(i in 1:(folds*number)){
+    
+    train <- data[idx[[i]], ]
+    test<- data[-idx[[i]], ]
+    
+    #d <-trans(train, test)
+    #train <- d$tr
+    #test <- d$tst
+    if(mod=='GBM')
+      res <- GBoost(train, test)
+    else if(mod=='ZIP')
+      res <- ZIP(train, test)
+    
+    rmse[i] <- res$rmse
+
+  }
+  return(rmse=rmse)
+}
+```
+
+
+```{r}
+
+pca <- PCA(select(train,starts_with("P")), graph=T)
+pca$eig
 ```
 
