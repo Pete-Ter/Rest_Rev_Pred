@@ -9,16 +9,18 @@ output: html_document
 ```{r import data}
 library(plyr); library(dplyr); library(Metrics); library(caret)
 library(rpivotTable); library(gbm); library(randomForest); library(FactoMineR)
+library(elasticnet);library(lars); library(caretEnsemble)
 
 train <- read.csv('data/train.csv', header = T)
 test <- read.csv('data/test.csv', header = T)
+```
 
+```{r}
 summary(train)
 str(train)
 ```
 
 ```{r graphs}
-rpivotTable(train)
 hist(train$revenue)
 boxplot(train$revenue ~ train$City.Group)
 boxplot(train$revenue ~ train$Type)
@@ -32,17 +34,31 @@ View(count(train, City))
 id <- train$Id
 train$Id <- NULL
 train$Open.Date <- as.Date(train$Open.Date, format = "%m/%d/%Y")
-train$Open.yr <- as.factor(format(train$Open.Date, "%Y")) 
-Open.Date <- train$Open.Date
+#train$Open.yr <- as.factor(format(train$Open.Date, "%Y")) 
+train$Open.days <- as.numeric(as.Date("2015-01-01")-train$Open.Date)
+#Open.Date <- train$Open.Date
 train$Open.Date <- NULL
 
 test$Open.Date <- as.Date(test$Open.Date, format = "%m/%d/%Y")
-test$Open.yr <- as.factor(format(test$Open.Date, "%Y")) 
+#test$Open.yr <- as.factor(format(test$Open.Date, "%Y")) 
+test$Open.days <- as.numeric(as.Date("2015-01-01")-test$Open.Date)
+summary(test$Open.days)
 
+summary(lm(revenue ~ Open.days, data=train))
+cor(train$Open.days, train$revenue)
 
 train$City.gr <- as.factor(ifelse(train$City=="Ä°stanbul", "Ä°stanbul", ifelse(train$City=="Ankara", "Ankara", as.character(train$City.Group))))
 
 test$City.gr <- as.factor(ifelse(test$City=="Ä°stanbul", "Ä°stanbul", ifelse(test$City=="Ankara", "Ankara", as.character(test$City.Group))))
+
+#train$Ank.Ind <- as.factor(ifelse(train$City=="Ankara", 1, 0))
+#train$Ist.Ind <- as.factor(ifelse(train$City=="Ä°stanbul", 1, 0))
+#test$Ank.Ind <- as.factor(ifelse(test$City=="Ankara", 1, 0))
+#test$Ist.Ind <- as.factor(ifelse(test$City=="Ä°stanbul", 1, 0))
+#train$Ism.Ind <- as.factor(ifelse(train$City=="Ä°zmir", 1, 0))
+#test$Ism.Ind <- as.factor(ifelse(test$City=="Ä°zmir", 1, 0))
+#train$Samsun.Ind <- as.factor(ifelse(train$City=="Samsun", 1, 0))
+#test$Samsun.Ind <- as.factor(ifelse(test$City=="Samsun", 1, 0))
 
 train$City <- NULL
 train$City.Group <- NULL
@@ -51,7 +67,33 @@ num.predictors <- ncol(train) - 1
 
 levels(test$Type)[levels(test$Type)=="MB"] <- "IL"
 
+train$revenue[train$revenue>.9e7] <- .9e7
+
+#train$revenue[train$revenue>.75e7] <- .75e7
+
+rpivotTable(train)
+
+
 ```
+
+
+```{r PCA}
+
+pca <- PCA(select(train,starts_with("P")), graph=T)
+pca$eig
+
+trans <- preProcess(select(train, starts_with("P")),method=c("center", "scale", "pca"), thresh = 0.90)
+transformed <- predict(trans, select(train, starts_with("P")))
+head(transformed)
+
+test.transformed <- predict(trans, newdata=select(test, starts_with("P")))
+
+head(test.transformed)
+
+train.pca <- cbind(select(train, -starts_with("P")), transformed)
+test.pca <- cbind(test, test.transformed)
+```
+
 
 ```{r formulas}
 
@@ -64,16 +106,17 @@ pls.form <- revenue ~ .
 ```{r caret fitcontrol}
 fitControl <- trainControl(## 4-fold CV
                            method = "repeatedcv",
-                           number = 4,
+                           number = 10,
                            ## repeated ten times
                            repeats = 10)
 
 ```
 
-```{r rF}
 
-rFGrid <-  expand.grid(.mtry=1:20)
+```{r rf}
+rFGrid <-  expand.grid(.mtry=1:18)
 
+set.seed(6)
 rfFit <- train(as.formula(rf.form),
                data=train,
                method="rf",
@@ -81,8 +124,35 @@ rfFit <- train(as.formula(rf.form),
                metric="RMSE",
                verbose=T,
                tuneGrid=rFGrid, 
+               importance=T#,
+               #ntree=1700
+               )
+rfFit
+
+varImp(rfFit, scale=T)
+rownames(varImp(rfFit, scale=T))
+```
+
+
+```{r rF pred}
+test$Prediction <- predict(rfFit, newdata=test)
+```
+
+
+```{r rF PCA}
+
+rFGrid <-  expand.grid(.mtry=1:9)
+
+set.seed(6)
+rfFit <- train(as.formula(rf.form),
+               data=train.pca,
+               method="rf",
+               trControl=fitControl,
+               metric="RMSE",
+               verbose=T,
+               tuneGrid=rFGrid, 
                importance=T
-               #ntree=2000
+               #ntree=1600
                )
 rfFit
 
@@ -105,11 +175,77 @@ predict(plsFit,newdata=test)
 
 ```
 
+```{r glmnet}
 
-```{r}
+enetGrid <- expand.grid(.lambda = c(0,0.001, 0.01, .1),
+ .fraction = seq(.005, 1, length = 200))
+
+set.seed(100)
+enetTune <- train(as.formula(pls.form),
+   data=train,
+   method = "enet",
+   tuneGrid = enetGrid,
+   trControl = fitControl,
+   preProc = c("center", "scale"))
+
+enetTune
+
+test$Prediction <- predict(enetTune, newdata=test)
+
+```
+
+```{r lasso}
+
+lassoGrid <- expand.grid(.fraction = seq(.0005, .05, length = 1000))
+
+set.seed(100)
+lassoTune <- train(as.formula(pls.form),
+   data=train,
+   method = "lasso",
+   tuneGrid = lassoGrid,
+   trControl = fitControl,
+   preProc = c("center", "scale"))
+
+lassoTune
+
+plot(lassoTune)
+```
+
+```{r caretEnsemble}
+
+#model_list <- caretList(
+#  as.formula(rf.form), data=train,
+#  trControl=fitControl,
+#  methodList=c('rf', 'lasso')
+#  )
+
+model_list <- caretList(
+  as.formula(rf.form), data=train,
+  trControl=fitControl,
+  metric='RMSE',
+  #methodList=c('rf', 'lasso'),
+  tuneList=list(
+    rf=caretModelSpec(method='rf', tuneGrid=data.frame(.mtry=1:18)),
+    lasso=caretModelSpec(method='lasso', tuneGrid=expand.grid(.fraction = seq(.0005, .05, length = 1000)), preProc = c("center", "scale"))
+  ))
+
+xyplot(resamples(model_list))
+modelCor(resamples(model_list))
+
+greedy_ensemble <- caretEnsemble(model_list)
+summary(greedy_ensemble)
+varImp(greedy_ensemble)
+
+test$Prediction <- predict(greedy_ensemble, newdata=test)
+```
+
+
+```{r cor}
 apply(cor(select(train, starts_with("P")))-diag(ncol(select(train, starts_with("P")))), 2, max)
 
 apply(cor(select(train, starts_with("P")))-diag(ncol(select(train, starts_with("P")))), 2, mean)
+
+cor(cbind(select(train,starts_with("P")), select(train, revenue)))
 
 train$P36 <- NULL
 train$P9 <- NULL
@@ -122,6 +258,29 @@ train$P34 <- NULL
 train$P18 <- NULL
 train$P13 <- NULL
 train$P14 <- NULL
+
+```
+
+```{r Nulling P's}
+train$P37 <- NULL
+train$P3 <- NULL
+train$P33 <- NULL
+train$P16 <- NULL
+train$P15 <- NULL
+train$P14 <- NULL
+####
+train$P4 <- NULL
+train$P7 <- NULL
+train$P8 <- NULL
+train$P9 <- NULL
+####
+train$P10 <- NULL
+train$P11 <- NULL
+train$P12 <- NULL
+train$P19 <- NULL
+###########
+train$P22 <- NULL
+train$P24 <- NULL
 
 ```
 
@@ -158,9 +317,9 @@ CrossVal <- function(data, y, mod, folds, number){
 ```
 
 
-```{r}
+```{r csv file}
+write.csv(select(test, Id, Prediction), "preds.csv", row.names = F)
 
-pca <- PCA(select(train,starts_with("P")), graph=T)
-pca$eig
 ```
+
 
