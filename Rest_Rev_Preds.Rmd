@@ -10,7 +10,9 @@ output: html_document
 library(plyr); library(dplyr); library(Metrics); library(caret)
 library(rpivotTable); library(gbm); library(randomForest); library(FactoMineR)
 library(elasticnet);library(lars); library(caretEnsemble)
+```
 
+```{r load data}
 train <- read.csv('data/train.csv', header = T)
 test <- read.csv('data/test.csv', header = T)
 ```
@@ -44,12 +46,19 @@ test$Open.Date <- as.Date(test$Open.Date, format = "%m/%d/%Y")
 test$Open.days <- as.numeric(as.Date("2015-01-01")-test$Open.Date)
 summary(test$Open.days)
 
+train$Open.days <- NULL
+
 summary(lm(revenue ~ Open.days, data=train))
 cor(train$Open.days, train$revenue)
 
-train$City.gr <- as.factor(ifelse(train$City=="Ä°stanbul", "Ä°stanbul", ifelse(train$City=="Ankara", "Ankara", as.character(train$City.Group))))
+train$City.gr <- as.factor(ifelse(train$City %in% "Ä°stanbul", "Ä°stanbul", ifelse(train$City %in% "Ankara", "Ankara", as.character(train$City.Group))))
 
-test$City.gr <- as.factor(ifelse(test$City=="Ä°stanbul", "Ä°stanbul", ifelse(test$City=="Ankara", "Ankara", as.character(test$City.Group))))
+levels(train$City.gr)[levels(train$City.gr)=="Big Cities"] <- "Ankara"
+
+test$City.gr <- as.factor(ifelse(test$City %in% "Ä°stanbul", "Ä°stanbul", ifelse(test$City %in% "Ankara", "Ankara", as.character(test$City.Group))))
+
+levels(test$City.gr)[levels(test$City.gr)=="Big Cities"] <- "Ankara"
+
 
 #train$Ank.Ind <- as.factor(ifelse(train$City=="Ankara", 1, 0))
 #train$Ist.Ind <- as.factor(ifelse(train$City=="Ä°stanbul", 1, 0))
@@ -65,15 +74,33 @@ train$City.Group <- NULL
 
 num.predictors <- ncol(train) - 1
 
+levels(train$Type)[levels(train$Type)=="DT"] <- "FC"
+levels(test$Type)[levels(test$Type)=="DT"] <- "FC"
 levels(test$Type)[levels(test$Type)=="MB"] <- "IL"
 
-train$revenue[train$revenue>.9e7] <- .9e7
+train$revenue[train$revenue>.85e7] <- .85e7
+train$revenue[train$revenue< 1750000] <- 1750000
 
-#train$revenue[train$revenue>.75e7] <- .75e7
+#train$revenue[train$revenue>.9e7] <- .9e7
 
 rpivotTable(train)
 
+train$P3 <- NULL
+train$P12 <- NULL
+train$P15 <- NULL
+train$P11 <- NULL
+train$P24 <- NULL
 
+```
+
+```{r new var creation}
+train$type.city <- paste0(train$Type,"_",train$City.gr)
+table(train$type.city)
+test$type.city <- paste0(test$Type,"_",test$City.gr)
+
+train <- getOneWayVars(train,test,c("type.city"),"revenue",freq=F, rand=1)
+summary(train)
+train$type.city <- NULL
 ```
 
 
@@ -96,7 +123,6 @@ test.pca <- cbind(test, test.transformed)
 
 
 ```{r formulas}
-
 rf.form <- revenue ~ .
 pls.form <- revenue ~ .
 
@@ -108,7 +134,7 @@ fitControl <- trainControl(## 4-fold CV
                            method = "repeatedcv",
                            number = 10,
                            ## repeated ten times
-                           repeats = 10)
+                           repeats = 20)
 
 ```
 
@@ -124,13 +150,14 @@ rfFit <- train(as.formula(rf.form),
                metric="RMSE",
                verbose=T,
                tuneGrid=rFGrid, 
-               importance=T#,
-               #ntree=1700
+               importance=T,
+               ntree=500
                )
 rfFit
 
-varImp(rfFit, scale=T)
-rownames(varImp(rfFit, scale=T))
+ImpMeasure<-data.frame(varImp(rfFit)$importance)
+    ImpMeasure$Vars<-row.names(ImpMeasure)
+ImpMeasure[order(-ImpMeasure$Overall),]
 ```
 
 
@@ -315,6 +342,164 @@ CrossVal <- function(data, y, mod, folds, number){
   return(rmse=rmse)
 }
 ```
+
+```{r getOneWay}
+
+
+############################################################################################################
+# Get count and avg responses for factor variables (a.ka. Leave one-out experience variables)
+getOneWayVars <- function(train, test, varList, yvar, freq=TRUE, cred=0, rand=0) {
+  # freq=TRUE when you want the factor counts; set cred > 0 for credibility adjustment; rand > 0 for random shocking
+  # Requires dplyr
+  
+  len <- length(varList)
+  rowNumCheck.train <- nrow(train)
+  rowNumCheck.test <- nrow(test)
+  
+  train$responseVar <- train[, yvar]
+  total_avg_response <- mean(train$responseVar, na.rm=TRUE)  # Fixed only for this contest
+  
+  for (i in 1:len) {
+    train$groupingVar <- train[, varList[i]]
+    test$groupingVar <- test[, varList[i]]   
+    
+    df <- train %>%
+      group_by(groupingVar) %>%
+      summarise(
+        freq = n() - 1,
+        YRate = mean(responseVar, na.rm=TRUE)
+      ) %>% ungroup()
+    
+    train <- left_join(train, df, by='groupingVar')
+    
+    train_tmp <- unique(train[, c('groupingVar', 'freq', 'YRate')])
+    test <- left_join(test, train_tmp, by='groupingVar')
+    names(test)[which(names(test)=='freq')] <- 'dummyFreq'
+    names(test)[which(names(test)=='YRate')] <- 'dummyRate'
+    test$dummyFreq <- test$dummyFreq + 1
+    test$dummyFreq[is.na(test$dummyFreq)] <- 0
+    
+    ids <- which(is.na(test$dummyRate))
+    test$dummyRate[ids] <- total_avg_response
+    test$dummyRate[-ids] <- (test$dummyRate[-ids] + (total_avg_response * cred / test$dummyFreq[-ids])) * (test$dummyFreq[-ids] / (test$dummyFreq[-ids] + cred))
+    
+    if (freq) {
+      names(test)[which(names(test)=='dummyFreq')] <- paste(varList[i], '_freq', sep='')  
+    } else {
+      id <- which(names(test)=='dummyFreq')
+      test[, id] <- NULL
+    }
+    
+    names(test)[which(names(test)=='dummyRate')] <- paste(varList[i], '_', yvar, 'Rate', sep='')
+    
+    # Leave one out adjustment for train data
+    train$YRate <- (train$YRate - (train$responseVar / (train$freq+1))) * (train$freq+1)/(train$freq)
+    train$YRate <- (train$YRate + (total_avg_response * cred / train$freq)) * (train$freq / (train$freq + cred))
+    train$YRate[train$freq == 0] <- total_avg_response
+    set.seed(10)
+    train$YRate <- train$YRate * (1+(runif(nrow(train))-0.5) * rand)
+    
+    if (freq) {
+      names(train)[which(names(train)=='freq')] <- paste(varList[i], '_freq', sep='')
+    } else {
+      id <- which(names(train)=='freq')
+      train[, id] <- NULL
+    }
+    
+    names(train)[which(names(train)=='YRate')] <- paste(varList[i], '_', yvar, 'Rate', sep='')
+    
+    train$groupingVar <- NULL;
+    test$groupingVar <- NULL;
+  }
+  
+  train$responseVar <- NULL; train$groupingVar <- NULL; test$groupingVar <- NULL;
+  
+  if(nrow(train) != rowNumCheck.train) print('Error: Different number of rows in train data. Bad join!')
+  
+  if(nrow(test) != rowNumCheck.test) print('Error: Different number of rows in test data. Bad join!')
+  
+  test <<- test
+  return(train)
+}
+
+################################################################################
+
+getOneWayVars_retTest <- function(train, test, varList, yvar, freq=TRUE, cred=0, rand=0) {
+  # freq=TRUE when you want the factor counts; set cred > 0 for credibility adjustment; rand > 0 for random shocking
+  # Requires dplyr
+  
+  len <- length(varList)
+  rowNumCheck.train <- nrow(train)
+  rowNumCheck.test <- nrow(test)
+  
+  train$responseVar <- train[, yvar]
+  total_avg_response <- mean(train$responseVar, na.rm=TRUE)  # Fixed only for this contest
+  
+  for (i in 1:len) {
+    train$groupingVar <- train[, varList[i]]
+    test$groupingVar <- test[, varList[i]]   
+    
+    df <- train %>%
+      group_by(groupingVar) %>%
+      summarise(
+        freq = n() - 1,
+        YRate = mean(responseVar, na.rm=TRUE)
+      ) %>% ungroup()
+    
+    train <- left_join(train, df, by='groupingVar')
+    
+    train_tmp <- unique(train[, c('groupingVar', 'freq', 'YRate')])
+    test <- left_join(test, train_tmp, by='groupingVar')
+    names(test)[which(names(test)=='freq')] <- 'dummyFreq'
+    names(test)[which(names(test)=='YRate')] <- 'dummyRate'
+    test$dummyFreq <- test$dummyFreq + 1
+    test$dummyFreq[is.na(test$dummyFreq)] <- 0
+    
+    ids <- which(is.na(test$dummyRate))
+    test$dummyRate[ids] <- total_avg_response
+    test$dummyRate[-ids] <- (test$dummyRate[-ids] + (total_avg_response * cred / test$dummyFreq[-ids])) * (test$dummyFreq[-ids] / (test$dummyFreq[-ids] + cred))
+    
+    if (freq) {
+      names(test)[which(names(test)=='dummyFreq')] <- paste(varList[i], '_freq', sep='')  
+    } else {
+      id <- which(names(test)=='dummyFreq')
+      test[, id] <- NULL
+    }
+    
+    names(test)[which(names(test)=='dummyRate')] <- paste(varList[i], '_', yvar, 'Rate', sep='')
+    
+    # Leave one out adjustment for train data
+    train$YRate <- (train$YRate - (train$responseVar / (train$freq+1))) * (train$freq+1)/(train$freq)
+    train$YRate <- (train$YRate + (total_avg_response * cred / train$freq)) * (train$freq / (train$freq + cred))
+    train$YRate[train$freq == 0] <- total_avg_response
+    set.seed(10)
+    train$YRate <- train$YRate * (1+(runif(nrow(train))-0.5) * rand)
+    
+    if (freq) {
+      names(train)[which(names(train)=='freq')] <- paste(varList[i], '_freq', sep='')
+    } else {
+      id <- which(names(train)=='freq')
+      train[, id] <- NULL
+    }
+    
+    names(train)[which(names(train)=='YRate')] <- paste(varList[i], '_', yvar, 'Rate', sep='')
+    
+    train$groupingVar <- NULL;
+    test$groupingVar <- NULL;
+  }
+  
+  train$responseVar <- NULL; train$groupingVar <- NULL; test$groupingVar <- NULL;
+  
+  if(nrow(train) != rowNumCheck.train) print('Error: Different number of rows in train data. Bad join!')
+  
+  if(nrow(test) != rowNumCheck.test) print('Error: Different number of rows in test data. Bad join!')
+  
+  return(test)
+}
+
+
+```
+
 
 
 ```{r csv file}
