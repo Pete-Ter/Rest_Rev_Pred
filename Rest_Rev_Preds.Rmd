@@ -9,7 +9,7 @@ output: html_document
 ```{r import data}
 library(plyr); library(dplyr); library(Metrics); library(caret)
 library(rpivotTable); library(gbm); library(randomForest); library(FactoMineR)
-library(elasticnet);library(lars); library(caretEnsemble)
+library(elasticnet);library(lars); library(caretEnsemble); library(glmnet)
 ```
 
 ```{r load data}
@@ -79,8 +79,8 @@ levels(train$Type)[levels(train$Type)=="DT"] <- "FC"
 levels(test$Type)[levels(test$Type)=="DT"] <- "FC"
 levels(test$Type)[levels(test$Type)=="MB"] <- "IL"
 
-train$revenue[train$revenue>.85e7] <- .85e7
-train$revenue[train$revenue< 1750000] <- 1750000
+#train$revenue[train$revenue>.85e7] <- .85e7
+#train$revenue[train$revenue< 1750000] <- 1750000
 
 #train$revenue[train$revenue>.9e7] <- .9e7
 
@@ -120,7 +120,7 @@ train$P18 <- NULL
 train$P14 <- NULL
 #train$P16 <- NULL
 
-train <- select(train,Type, Open.days, City.gr, revenue, P1, P2, P6, P17, P28, P36)
+#train <- select(train,Type, Open.days, City.gr, revenue, P1, P2, P6, P17, P28, P36)
 ```
 
 
@@ -180,7 +180,7 @@ fitControl <- trainControl(## 4-fold CV
 
 
 ```{r rf}
-rFGrid <-  expand.grid(.mtry=1:10)
+rFGrid <-  expand.grid(.mtry=1:11)
 
 set.seed(6)
 rfFit <- train(as.formula(rf.form),
@@ -245,17 +245,18 @@ predict(plsFit,newdata=test)
 ```{r glmnet}
 
 enetGrid <- expand.grid(.lambda = c(0,0.001, 0.01, .1),
- .fraction = seq(.005, 1, length = 200))
+ .alpha = seq(.005, 1, length = 200))
 
 set.seed(100)
 enetTune <- train(as.formula(pls.form),
    data=train,
-   method = "enet",
+   method = "glmnet",
    tuneGrid = enetGrid,
    trControl = fitControl,
    preProc = c("center", "scale"))
 
 enetTune
+plot(enetTune)
 
 test$Prediction <- predict(enetTune, newdata=test)
 
@@ -277,6 +278,24 @@ lassoTune
 
 plot(lassoTune)
 ```
+
+```{r ridge}
+
+ridgeGrid <- expand.grid(.lambda = c(0,0.001, 0.01, .1, .5, .6, .9))
+
+set.seed(100)
+ridgeTune <- train(as.formula(pls.form),
+   data=train,
+   method = "ridge",
+   tuneGrid = ridgeGrid,
+   trControl = fitControl,
+   preProc = c("center", "scale"))
+
+ridgeTune
+
+plot(ridgeTune)
+```
+
 
 ```{r caretEnsemble}
 
