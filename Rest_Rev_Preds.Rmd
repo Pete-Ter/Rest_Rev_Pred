@@ -29,6 +29,7 @@ boxplot(train$revenue ~ train$Type)
 boxplot(train$revenue ~ train$City)
 boxplot(train$revenue)
 
+#cor(train$Open.days,train$revenue)
 View(count(train, City))
 ```
 
@@ -46,7 +47,7 @@ test$Open.Date <- as.Date(test$Open.Date, format = "%m/%d/%Y")
 test$Open.days <- as.numeric(as.Date("2015-01-01")-test$Open.Date)
 summary(test$Open.days)
 
-train$Open.days <- NULL
+#train$Open.days <- NULL
 
 summary(lm(revenue ~ Open.days, data=train))
 cor(train$Open.days, train$revenue)
@@ -84,7 +85,46 @@ train$revenue[train$revenue< 1750000] <- 1750000
 #train$revenue[train$revenue>.9e7] <- .9e7
 
 rpivotTable(train)
+```
 
+```{r recursive random forest feature elim}
+train$P9 <- NULL
+train$P12 <- NULL
+train$P3 <- NULL
+train$P35 <- NULL
+train$P33 <- NULL
+train$P8 <- NULL
+train$P30 <- NULL
+train$P24 <- NULL
+train$P15 <- NULL
+train$P21 <- NULL
+train$P11 <- NULL
+train$P7 <- NULL
+train$P22 <- NULL
+train$P10 <- NULL
+train$P19 <- NULL
+train$P27 <- NULL
+train$P37 <- NULL
+train$P13 <- NULL
+train$P34 <- NULL
+train$P26 <- NULL
+train$P31 <- NULL
+#train$type.city_revenueRate <- NULL
+#train$P28 <- NULL
+cor(as.numeric(train$P28),train$revenue)
+train$P32 <- NULL
+train$P29 <- NULL
+####
+train$P18 <- NULL
+#
+train$P14 <- NULL
+#train$P16 <- NULL
+
+train <- select(train,Type, Open.days, City.gr, revenue, P1, P2, P6, P17, P28, P36)
+```
+
+
+```{r removing vars}
 train$P3 <- NULL
 train$P12 <- NULL
 train$P15 <- NULL
@@ -134,13 +174,13 @@ fitControl <- trainControl(## 4-fold CV
                            method = "repeatedcv",
                            number = 10,
                            ## repeated ten times
-                           repeats = 20)
+                           repeats = 10)
 
 ```
 
 
 ```{r rf}
-rFGrid <-  expand.grid(.mtry=1:18)
+rFGrid <-  expand.grid(.mtry=1:10)
 
 set.seed(6)
 rfFit <- train(as.formula(rf.form),
@@ -275,7 +315,7 @@ apply(cor(select(train, starts_with("P")))-diag(ncol(select(train, starts_with("
 cor(cbind(select(train,starts_with("P")), select(train, revenue)))
 
 train$P36 <- NULL
-train$P9 <- NULL
+dtrain$P9 <- NULL
 train$P10 <- NULL
 train$P26 <- NULL
 train$P16 <- NULL
