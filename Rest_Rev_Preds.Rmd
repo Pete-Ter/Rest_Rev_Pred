@@ -54,11 +54,11 @@ cor(train$Open.days, train$revenue)
 
 train$City.gr <- as.factor(ifelse(train$City %in% "Ä°stanbul", "Ä°stanbul", ifelse(train$City %in% "Ankara", "Ankara", as.character(train$City.Group))))
 
-levels(train$City.gr)[levels(train$City.gr)=="Big Cities"] <- "Ankara"
+#levels(train$City.gr)[levels(train$City.gr)=="Big Cities"] <- "Ankara"
 
 test$City.gr <- as.factor(ifelse(test$City %in% "Ä°stanbul", "Ä°stanbul", ifelse(test$City %in% "Ankara", "Ankara", as.character(test$City.Group))))
 
-levels(test$City.gr)[levels(test$City.gr)=="Big Cities"] <- "Ankara"
+#levels(test$City.gr)[levels(test$City.gr)=="Big Cities"] <- "Ankara"
 
 
 #train$Ank.Ind <- as.factor(ifelse(train$City=="Ankara", 1, 0))
@@ -75,8 +75,8 @@ train$City.Group <- NULL
 
 num.predictors <- ncol(train) - 1
 
-levels(train$Type)[levels(train$Type)=="DT"] <- "FC"
-levels(test$Type)[levels(test$Type)=="DT"] <- "FC"
+#levels(train$Type)[levels(train$Type)=="DT"] <- "FC"
+#levels(test$Type)[levels(test$Type)=="DT"] <- "FC"
 levels(test$Type)[levels(test$Type)=="MB"] <- "IL"
 
 #train$revenue[train$revenue>.85e7] <- .85e7
@@ -133,6 +133,13 @@ train$P24 <- NULL
 
 ```
 
+```{r vars to keep}
+
+train <- select(train, Open.days, City.gr, revenue, P1, P2, P6, P28, P29, P36)
+
+```
+
+
 ```{r new var creation}
 train$type.city <- paste0(train$Type,"_",train$City.gr)
 table(train$type.city)
@@ -172,7 +179,7 @@ pls.form <- revenue ~ .
 ```{r caret fitcontrol}
 fitControl <- trainControl(## 4-fold CV
                            method = "repeatedcv",
-                           number = 10,
+                           number = 5,
                            ## repeated ten times
                            repeats = 10)
 
@@ -180,7 +187,8 @@ fitControl <- trainControl(## 4-fold CV
 
 
 ```{r rf}
-rFGrid <-  expand.grid(.mtry=1:11)
+rFGrid <-  expand.grid(mtry=1:20, maxnodes=seq(4,14), nodesize=seq(5, 15), 
+                       ntree=c(500, 1000))
 
 set.seed(6)
 rfFit <- train(as.formula(rf.form),
@@ -190,8 +198,8 @@ rfFit <- train(as.formula(rf.form),
                metric="RMSE",
                verbose=T,
                tuneGrid=rFGrid, 
-               importance=T,
-               ntree=500
+               importance=T#,
+               #ntree=500
                )
 rfFit
 
@@ -370,40 +378,83 @@ train$P24 <- NULL
 
 ```
 
+```{r runRF}
+rFGrid <-  expand.grid(mtry=1:3, maxnodes=seq(5,14), nodesize=seq(6,11), 
+                       ntree=c(500, 1000))
+
+
+############################################################################################################
+# Function to run Random Forest model
+runRF <- function(train, test, model, response, trees, mtry, maxnodes, nodesize, set.test=F) {
+  
+  set.seed(2)
+  
+  rfModel <- randomForest(formula = model,
+                          data = train,
+                          ntree = trees, # Should not be set to too small to ensure that every input row gets predicted at least a few times
+                          mtry = mtry,  # Number of variables randomly sampled as candidates at each split
+                          maxnodes = maxnodes, # Maximum number of terminal nodes trees can have. If not given, trees are grown to the maximum possible (subject to limits by nodesize)
+                          nodesize = nodesize, # Minimum size of terminal nodes. Setting this number larger causes smaller trees
+                                               # to be grown (and thus take less time).Default=1 (for classification); Default=5 (for regression)
+                          importance = TRUE,
+                          proximity = TRUE
+                          )
+  
+  # Score
+  #train$score_rf <- predict(rfModel, train, type='response')
+  test$score_rf <- predict(rfModel, test, type='response')
+  
+  if(set.test==F)
+    rmse <- caret::RMSE(test$score_rf, test[, response])
+  else
+    test.pr <<- test
+  return(rmse)
+}
+
+```
+
+```{r crossval}
+mean.met <- CrossVal(train, 'revenue', as.formula(rf.form), 10, 2, rFGrid)
+
+runRF(train, test, as.formula(rf.form), 'revenue', rFGrid$ntree[which.min(mean.met)],  rFGrid$mtry[which.min(mean.met)],rFGrid$maxnodes[which.min(mean.met)],rFGrid$nodesize[which.min(mean.met)], set.test=T)
+
+```
+
 
 ```{r CrossVal}
 
-CrossVal <- function(data, y, mod, folds, number){
+
+CrossVal <- function(data, y, mod, folds, number, params){
   "y is the string name of the response"
+  "params is the data.frame of parameters"
+  "mod is formula already in formula form"
   set.seed(4)
   
   idx <- createMultiFolds(data[, y], k=folds, times=number)
   #idx <- createFolds(data[, y], k=folds)
   
-  rmse <- rep(0, folds*number)
+  mean.metric <- rep(0, nrow(params))
   
-  for(i in 1:(folds*number)){
+  for(j in 1:nrow(params)){
     
-    train <- data[idx[[i]], ]
-    test<- data[-idx[[i]], ]
-    
-    #d <-trans(train, test)
-    #train <- d$tr
-    #test <- d$tst
-    if(mod=='GBM')
-      res <- GBoost(train, test)
-    else if(mod=='ZIP')
-      res <- ZIP(train, test)
-    
-    rmse[i] <- res$rmse
+    rmse <- rep(0, folds*number)
 
+    for(i in 1:(folds*number)){
+    
+      train <- data[idx[[i]], ]
+      test <- data[-idx[[i]], ]
+    
+      rmse[i] <- runRF(train, test, mod, y, params$ntree[j],
+                        params$mtry[j], params$maxnodes[j], params$nodesize[j])
+    
+    }
+    mean.metric[j] <- mean(rmse)
   }
-  return(rmse=rmse)
+  return(mean.metric)
 }
 ```
 
 ```{r getOneWay}
-
 
 ############################################################################################################
 # Get count and avg responses for factor variables (a.ka. Leave one-out experience variables)
