@@ -31,6 +31,12 @@ boxplot(train$revenue)
 
 #cor(train$Open.days,train$revenue)
 View(count(train, City))
+
+plot(train$P37, train$revenue)
+
+table(train$P37)
+
+#P17 P2 P3 11 P18 36 37
 ```
 
 ```{r preProcessing}
@@ -135,7 +141,50 @@ train$P24 <- NULL
 
 ```{r vars to keep}
 
-train <- select(train, Open.days, City.gr, revenue, P1, P2, P6, P28, P29, P36)
+#train <- select(train, Open.days, City.gr, revenue, P1, P2, P6, P28, P29, P36)
+
+#P17 P2 P3 11 P18 36 37
+train <- select(train, Open.days, City.gr, revenue, P2, P3, P11, P17, P18, P36, P37)
+#train$P2 <- as.factor(train$P2)
+#test$P2 <- as.factor(test$P2)
+#train$P3 <- as.factor(train$P3)
+#test$P3 <- as.factor(test$P3)
+train$P11 <- as.factor(train$P11)
+test$P11 <- as.factor(test$P11)
+#train$P17 <- as.factor(train$P17)
+#test$P17 <- as.factor(test$P17)
+#train$P18 <- as.factor(train$P18)
+#test$P18 <- as.factor(test$P18)
+#train$P36 <- as.factor(train$P36)
+#test$P36 <- as.factor(test$P36)
+train$P37 <- as.factor(train$P37)
+test$P37 <- as.factor(test$P37)
+
+train$Open.days.log <- log(train$Open.days)
+test$Open.days.log <- log(test$Open.days)
+
+train$revenue.log <- log(train$revenue)
+test$revenue.log <- log(test$revenue)
+
+train$P2.log <- log(train$P2+1)
+test$P2.log <- log(test$P2+1)
+
+train$P3.log <- log(train$P3+1)
+test$P3.log <- log(test$P3+1)
+
+train$P17.log <- log(train$P17+1)
+test$P17.log <- log(test$P17+1)
+
+train$Open.days <- NULL
+train$revenue <- NULL
+train$P2 <- NULL
+train$P3 <- NULL
+train$P17 <- NULL
+
+table(train$P2)
+table(test$P2)
+
+
 
 ```
 
@@ -170,8 +219,8 @@ test.pca <- cbind(test, test.transformed)
 
 
 ```{r formulas}
-rf.form <- revenue ~ .
-pls.form <- revenue ~ .
+rf.form <- revenue.log ~ .
+pls.form <- revenue.log ~ .
 
 ```
 
@@ -379,15 +428,15 @@ train$P24 <- NULL
 ```
 
 ```{r runRF}
-rFGrid <-  expand.grid(mtry=1:3, maxnodes=seq(5,14), nodesize=seq(6,11), 
-                       ntree=c(500, 1000))
+rFGrid <-  expand.grid(mtry=2:4, maxnodes=seq(5,14), nodesize=seq(6,11), 
+                       ntree=c(75, 200, 500, 1000))
 
 
 ############################################################################################################
 # Function to run Random Forest model
 runRF <- function(train, test, model, response, trees, mtry, maxnodes, nodesize, set.test=F) {
   
-  set.seed(2)
+    set.seed(2)
   
   rfModel <- randomForest(formula = model,
                           data = train,
@@ -404,9 +453,10 @@ runRF <- function(train, test, model, response, trees, mtry, maxnodes, nodesize,
   #train$score_rf <- predict(rfModel, train, type='response')
   test$score_rf <- predict(rfModel, test, type='response')
   
-  if(set.test==F)
+  if(set.test==F){
     rmse <- caret::RMSE(test$score_rf, test[, response])
-  else
+    mae <- mae(test[, response], test$score_rf)
+  }else
     test.pr <<- test
   return(rmse)
 }
@@ -414,10 +464,15 @@ runRF <- function(train, test, model, response, trees, mtry, maxnodes, nodesize,
 ```
 
 ```{r crossval}
-mean.met <- CrossVal(train, 'revenue', as.formula(rf.form), 10, 2, rFGrid)
+mean.met <- CrossVal(train, 'revenue.log', as.formula(rf.form), 10, 2, rFGrid)
 
+rFGrid[which.min(mean.met), ]
+mean.met[which.min(mean.met)]
 runRF(train, test, as.formula(rf.form), 'revenue', rFGrid$ntree[which.min(mean.met)],  rFGrid$mtry[which.min(mean.met)],rFGrid$maxnodes[which.min(mean.met)],rFGrid$nodesize[which.min(mean.met)], set.test=T)
 
+test <- test.pr
+test$Prediction <- exp(test$score_rf)
+test$Prediction
 ```
 
 
