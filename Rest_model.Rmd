@@ -80,15 +80,15 @@ test$P36.ind.3 <- ifelse(test$P36==3,1,0)
 
 ```{r train + formula}
 
-train <- select(train, revenue, Type, Open.days, City.Group, P2.ind.2, P2.ind.3, P3.ind.6, P3.ind.5, P17.ind, P18.ind.4, P18.ind.12, P36.ind.3, P11, P36, P2, P3, P17, P18, Ank.ind, Ist.ind)
+train <- select(train, revenue, Type, Open.days, City.Group, P2.ind.2, P2.ind.3, P17.ind, P18.ind.4, P18.ind.12, P36.ind.3, P36, P2, P17, P18, Ank.ind)
 
 rf.form <- revenue ~ .
 
 ```
 
 ```{r rfGrid}
-rfGrid <-  expand.grid(mtry=2:5, maxnodes=seq(5,14), nodesize=seq(6,12), 
-                       ntree=c(45, 75, 150, 250, 550))
+rfGrid <-  expand.grid(mtry=2:5, maxnodes=seq(9,12), nodesize=seq(9,11), 
+                       ntree=c(60, 75, 100, 250))
 
 ```
 
@@ -104,12 +104,14 @@ runRF(train, test, as.formula(rf.form), 'revenue', rfGrid$ntree[which.min(mean.m
 test <- test.pr
 test$Prediction <- test$score_rf
 test$Prediction
+
+Write(test)
 ```
 
 ```{r runRF function}
 ############################################################################################################
 # Function to run Random Forest model
-runRF <- function(train, test, model, response, trees, mtry, maxnodes, nodesize, set.test=F) {
+runRF <- function(train, test, model, response, trees, mtry, maxnodes, nodesize, set.test=F){
   
     set.seed(2)
   
@@ -133,17 +135,19 @@ runRF <- function(train, test, model, response, trees, mtry, maxnodes, nodesize,
     mae <- mae(test[, response], test$score_rf)
   }else{
     test.pr <<- test
-    
-    ImpMeasure<-data.frame(varImp(rfFit)$importance)
-    ImpMeasure$Vars<-row.names(ImpMeasure)
-    print(ImpMeasure[order(-ImpMeasure$Overall),])
+    print(varImp(rfModel,scale=T))
+    #plot(varImp(rfModel,scale=T), top = 20)
+    #ImpMeasure<-data.frame(varImp(rfModel)$importance)
+    #ImpMeasure$Vars<-row.names(ImpMeasure)
+    #print(ImpMeasure)
+    #print(ImpMeasure[order(-ImpMeasure$Overall),])
   }
   return(rmse)
 }
 
 ```
 
-```{r CrossVal function, ref.label='runRF function'}
+```{r CrossVal function, ref.label=c('runRF function')}
 
 CrossVal <- function(data, y, mod, folds, number, params){
   "y is the string name of the response"
@@ -172,5 +176,13 @@ CrossVal <- function(data, y, mod, folds, number, params){
     mean.metric[j] <- mean(rmse)
   }
   return(mean.metric)
+}
+```
+
+
+
+```{r csv file}
+Write <- function(test){
+  write.csv(select(test, Id, Prediction), "preds.csv", row.names = F)
 }
 ```
