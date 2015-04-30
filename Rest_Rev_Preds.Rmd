@@ -29,6 +29,7 @@ boxplot(train$revenue ~ train$Type)
 boxplot(train$revenue ~ train$City)
 boxplot(train$revenue)
 
+plot(train$Open.days, train$revenue)
 #cor(train$Open.days,train$revenue)
 View(count(train, City))
 
@@ -37,6 +38,34 @@ plot(train$P37, train$revenue)
 table(train$P37)
 
 #P17 P2 P3 11 P18 36 37
+
+#P17 -- 1
+#P2  -- 2, 3
+#P3 -- 5, 6
+#P18 -- 4, 12
+#P36 -- 3
+
+train$P17.ind <- ifelse(train$P17==1,1,0)
+train$P2.ind.2 <- ifelse(train$P2==2,1,0)
+train$P2.ind.3 <- ifelse(train$P2==3,1,0)
+train$P3.ind.5 <- ifelse(train$P3==5,1,0)
+train$P3.ind.6 <- ifelse(train$P3==6,1,0)
+train$P18.ind.4 <- ifelse(train$P18==4,1,0)
+train$P18.ind.12<- ifelse(train$P18==12,1,0)
+train$P36.ind.3 <- ifelse(train$P36==3,1,0)
+
+
+test$P17.ind <- ifelse(test$P17==1,1,0)
+test$P2.ind.2 <- ifelse(test$P2==2,1,0)
+test$P2.ind.3 <- ifelse(test$P2==3,1,0)
+test$P3.ind.5 <- ifelse(test$P3==5,1,0)
+test$P3.ind.6 <- ifelse(test$P3==6,1,0)
+test$P18.ind.4 <- ifelse(test$P18==4,1,0)
+test$P18.ind.12<- ifelse(test$P18==12,1,0)
+test$P36.ind.3 <- ifelse(test$P36==3,1,0)
+
+train <- select(train, Type, Open.days, City.gr, revenue, P2.ind.2, P2.ind.3, P3.ind.6, P3.ind.5, P17.ind, P18.ind.4, P18.ind.12, P36.ind.3, P11, P36, P2, P3, P17, P18)
+
 ```
 
 ```{r preProcessing}
@@ -88,7 +117,7 @@ levels(test$Type)[levels(test$Type)=="MB"] <- "IL"
 #train$revenue[train$revenue>.85e7] <- .85e7
 #train$revenue[train$revenue< 1750000] <- 1750000
 
-#train$revenue[train$revenue>.9e7] <- .9e7
+train$revenue[train$revenue>.9e7] <- .9e7
 
 rpivotTable(train)
 ```
@@ -219,7 +248,7 @@ test.pca <- cbind(test, test.transformed)
 
 
 ```{r formulas}
-rf.form <- revenue.log ~ .
+rf.form <- revenue ~ .
 pls.form <- revenue.log ~ .
 
 ```
@@ -428,7 +457,7 @@ train$P24 <- NULL
 ```
 
 ```{r runRF}
-rFGrid <-  expand.grid(mtry=2:4, maxnodes=seq(5,14), nodesize=seq(6,11), 
+rFGrid <-  expand.grid(mtry=2:5, maxnodes=seq(5,14), nodesize=seq(6,12), 
                        ntree=c(75, 200, 500, 1000))
 
 
@@ -464,14 +493,14 @@ runRF <- function(train, test, model, response, trees, mtry, maxnodes, nodesize,
 ```
 
 ```{r crossval}
-mean.met <- CrossVal(train, 'revenue.log', as.formula(rf.form), 10, 2, rFGrid)
+mean.met <- CrossVal(train, 'revenue', as.formula(rf.form), 10, 2, rFGrid)
 
 rFGrid[which.min(mean.met), ]
 mean.met[which.min(mean.met)]
 runRF(train, test, as.formula(rf.form), 'revenue', rFGrid$ntree[which.min(mean.met)],  rFGrid$mtry[which.min(mean.met)],rFGrid$maxnodes[which.min(mean.met)],rFGrid$nodesize[which.min(mean.met)], set.test=T)
 
 test <- test.pr
-test$Prediction <- exp(test$score_rf)
+test$Prediction <- test$score_rf
 test$Prediction
 ```
 
