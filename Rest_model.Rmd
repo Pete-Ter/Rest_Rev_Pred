@@ -1,0 +1,176 @@
+---
+title: "Rest Model"
+author: "Peter Terlecky"
+date: "April 30, 2015"
+output: html_document
+---
+```{r import data}
+library(plyr); library(dplyr); library(Metrics); library(caret)
+library(rpivotTable); library(gbm); library(randomForest); library(FactoMineR)
+library(elasticnet);library(lars); library(caretEnsemble); library(glmnet)
+```
+
+```{r load data}
+train <- read.csv('data/train.csv', header = T)
+test <- read.csv('data/test.csv', header = T)
+```
+
+```{r rPivotTable}
+rpivotTable(train)
+```
+
+
+```{r preProcessing}
+id <- train$Id
+train$Id <- NULL
+train$Open.Date <- as.Date(train$Open.Date, format = "%m/%d/%Y")
+train$Open.days <- as.numeric(as.Date("2015-01-01")-train$Open.Date)
+train$Open.Date <- NULL
+
+test$Open.Date <- as.Date(test$Open.Date, format = "%m/%d/%Y")
+test$Open.days <- as.numeric(as.Date("2015-01-01")-test$Open.Date)
+
+train$City.gr <- as.factor(ifelse(train$City %in% "Ä°stanbul", "Ä°stanbul", ifelse(train$City %in% "Ankara", "Ankara", as.character(train$City.Group))))
+
+#levels(train$City.gr)[levels(train$City.gr)=="Big Cities"] <- "Ankara"
+
+test$City.gr <- as.factor(ifelse(test$City %in% "Ä°stanbul", "Ä°stanbul", ifelse(test$City %in% "Ankara", "Ankara", as.character(test$City.Group))))
+
+train$Ist.ind <- ifelse(train$City %in% "Ä°stanbul", 1, 0)
+test$Ist.ind <- ifelse(test$City %in% "Ä°stanbul", 1, 0)
+
+train$Ank.ind <- ifelse(train$City %in% "Ankara", 1, 0)
+test$Ank.ind <- ifelse(test$City %in% "Ankara", 1, 0)
+
+train$City <- NULL
+levels(test$Type)[levels(test$Type)=="MB"] <- "IL"
+#levels(train$Type)[levels(train$Type)=="DT"] <- "FC"
+#levels(test$Type)[levels(test$Type)=="DT"] <- "FC"
+
+##### Capping
+
+train$revenue[train$revenue>.9e7] <- .9e7
+#train$revenue[train$revenue< 1750000] <- 1750000
+
+```
+
+```{r Adding Predictors}
+
+train$P17.ind <- ifelse(train$P17==1,1,0)
+train$P2.ind.2 <- ifelse(train$P2==2,1,0)
+train$P2.ind.3 <- ifelse(train$P2==3,1,0)
+train$P3.ind.5 <- ifelse(train$P3==5,1,0)
+train$P3.ind.6 <- ifelse(train$P3==6,1,0)
+train$P18.ind.4 <- ifelse(train$P18==4,1,0)
+train$P18.ind.12<- ifelse(train$P18==12,1,0)
+train$P36.ind.3 <- ifelse(train$P36==3,1,0)
+
+
+test$P17.ind <- ifelse(test$P17==1,1,0)
+test$P2.ind.2 <- ifelse(test$P2==2,1,0)
+test$P2.ind.3 <- ifelse(test$P2==3,1,0)
+test$P3.ind.5 <- ifelse(test$P3==5,1,0)
+test$P3.ind.6 <- ifelse(test$P3==6,1,0)
+test$P18.ind.4 <- ifelse(test$P18==4,1,0)
+test$P18.ind.12<- ifelse(test$P18==12,1,0)
+test$P36.ind.3 <- ifelse(test$P36==3,1,0)
+
+```
+
+
+```{r train + formula}
+
+train <- select(train, revenue, Type, Open.days, City.Group, P2.ind.2, P2.ind.3, P3.ind.6, P3.ind.5, P17.ind, P18.ind.4, P18.ind.12, P36.ind.3, P11, P36, P2, P3, P17, P18, Ank.ind, Ist.ind)
+
+rf.form <- revenue ~ .
+
+```
+
+```{r rfGrid}
+rfGrid <-  expand.grid(mtry=2:5, maxnodes=seq(5,14), nodesize=seq(6,12), 
+                       ntree=c(45, 75, 150, 250, 550))
+
+```
+
+```{r calling crossval ref.label='CrossVal function'}
+mean.met <- CrossVal(train, 'revenue', as.formula(rf.form), 5, 2, rfGrid)
+
+rfGrid[which.min(mean.met), ]
+
+mean.met[which.min(mean.met)]
+
+runRF(train, test, as.formula(rf.form), 'revenue', rfGrid$ntree[which.min(mean.met)],  rfGrid$mtry[which.min(mean.met)],rfGrid$maxnodes[which.min(mean.met)],rfGrid$nodesize[which.min(mean.met)], set.test=T)
+
+test <- test.pr
+test$Prediction <- test$score_rf
+test$Prediction
+```
+
+```{r runRF function}
+############################################################################################################
+# Function to run Random Forest model
+runRF <- function(train, test, model, response, trees, mtry, maxnodes, nodesize, set.test=F) {
+  
+    set.seed(2)
+  
+  rfModel <- randomForest(formula = model,
+                          data = train,
+                          ntree = trees, # Should not be set to too small to ensure that every input row gets predicted at least a few times
+                          mtry = mtry,  # Number of variables randomly sampled as candidates at each split
+                          maxnodes = maxnodes, # Maximum number of terminal nodes trees can have. If not given, trees are grown to the maximum possible (subject to limits by nodesize)
+                          nodesize = nodesize, # Minimum size of terminal nodes. Setting this number larger causes smaller trees
+                                               # to be grown (and thus take less time).Default=1 (for classification); Default=5 (for regression)
+                          importance = TRUE,
+                          proximity = TRUE
+                          )
+  
+  # Score
+  #train$score_rf <- predict(rfModel, train, type='response')
+  test$score_rf <- predict(rfModel, test, type='response')
+  
+  if(set.test==F){
+    rmse <- caret::RMSE(test$score_rf, test[, response])
+    mae <- mae(test[, response], test$score_rf)
+  }else{
+    test.pr <<- test
+    
+    ImpMeasure<-data.frame(varImp(rfFit)$importance)
+    ImpMeasure$Vars<-row.names(ImpMeasure)
+    print(ImpMeasure[order(-ImpMeasure$Overall),])
+  }
+  return(rmse)
+}
+
+```
+
+```{r CrossVal function, ref.label='runRF function'}
+
+CrossVal <- function(data, y, mod, folds, number, params){
+  "y is the string name of the response"
+  "params is the data.frame of parameters"
+  "mod is formula already in formula form"
+  set.seed(4)
+  
+  idx <- createMultiFolds(data[, y], k=folds, times=number)
+  #idx <- createFolds(data[, y], k=folds)
+  
+  mean.metric <- rep(0, nrow(params))
+  
+  for(j in 1:nrow(params)){
+    
+    rmse <- rep(0, folds*number)
+
+    for(i in 1:(folds*number)){
+    
+      train <- data[idx[[i]], ]
+      test <- data[-idx[[i]], ]
+    
+      rmse[i] <- runRF(train, test, mod, y, params$ntree[j],
+                        params$mtry[j], params$maxnodes[j], params$nodesize[j])
+    
+    }
+    mean.metric[j] <- mean(rmse)
+  }
+  return(mean.metric)
+}
+```
