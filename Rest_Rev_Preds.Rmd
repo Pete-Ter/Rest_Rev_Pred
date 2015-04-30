@@ -24,18 +24,19 @@ str(train)
 
 ```{r graphs}
 hist(train$revenue)
-boxplot(train$revenue ~ train$City.Group)
+boxplot(train$revenue ~ train$City.gr)
 boxplot(train$revenue ~ train$Type)
 boxplot(train$revenue ~ train$City)
 boxplot(train$revenue)
+table(train$City)
 
 plot(train$Open.days, train$revenue)
 #cor(train$Open.days,train$revenue)
 View(count(train, City))
 
-plot(train$P37, train$revenue)
+plot(train$P3, train$revenue)
 
-table(train$P37)
+table(train$P2)
 
 #P17 P2 P3 11 P18 36 37
 
@@ -64,7 +65,7 @@ test$P18.ind.4 <- ifelse(test$P18==4,1,0)
 test$P18.ind.12<- ifelse(test$P18==12,1,0)
 test$P36.ind.3 <- ifelse(test$P36==3,1,0)
 
-train <- select(train, Type, Open.days, City.gr, revenue, P2.ind.2, P2.ind.3, P3.ind.6, P3.ind.5, P17.ind, P18.ind.4, P18.ind.12, P36.ind.3, P11, P36, P2, P3, P17, P18)
+train <- select(train, Type, Open.days, City.Group, revenue, P2.ind.2, P2.ind.3, P3.ind.6, P3.ind.5, P17.ind, P18.ind.4, P18.ind.12, P36.ind.3, P11, P36, P2, P3, P17, P18)
 
 ```
 
@@ -87,7 +88,7 @@ summary(test$Open.days)
 summary(lm(revenue ~ Open.days, data=train))
 cor(train$Open.days, train$revenue)
 
-train$City.gr <- as.factor(ifelse(train$City %in% "Ä°stanbul", "Ä°stanbul", ifelse(train$City %in% "Ankara", "Ankara", as.character(train$City.Group))))
+#train$City.gr <- as.factor(ifelse(train$City %in% "Ä°stanbul", "Ä°stanbul", ifelse(train$City %in% "Ankara", "Ankara", as.character(train$City.Group))))
 
 #levels(train$City.gr)[levels(train$City.gr)=="Big Cities"] <- "Ankara"
 
@@ -106,7 +107,7 @@ test$City.gr <- as.factor(ifelse(test$City %in% "Ä°stanbul", "Ä°stanbul", if
 #test$Samsun.Ind <- as.factor(ifelse(test$City=="Samsun", 1, 0))
 
 train$City <- NULL
-train$City.Group <- NULL
+#train$City.Group <- NULL
 
 num.predictors <- ncol(train) - 1
 
@@ -493,10 +494,12 @@ runRF <- function(train, test, model, response, trees, mtry, maxnodes, nodesize,
 ```
 
 ```{r crossval}
-mean.met <- CrossVal(train, 'revenue', as.formula(rf.form), 10, 2, rFGrid)
+mean.met <- CrossVal(train, 'revenue', as.formula(rf.form), 5, 2, rFGrid)
 
 rFGrid[which.min(mean.met), ]
+
 mean.met[which.min(mean.met)]
+
 runRF(train, test, as.formula(rf.form), 'revenue', rFGrid$ntree[which.min(mean.met)],  rFGrid$mtry[which.min(mean.met)],rFGrid$maxnodes[which.min(mean.met)],rFGrid$nodesize[which.min(mean.met)], set.test=T)
 
 test <- test.pr
