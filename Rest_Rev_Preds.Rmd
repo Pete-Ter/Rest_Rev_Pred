@@ -18,13 +18,14 @@ test <- read.csv('data/test.csv', header = T)
 ```
 
 ```{r}
+names(train)
 summary(train)
 str(train)
 ```
 
 ```{r graphs}
 hist(train$revenue)
-boxplot(train$revenue ~ train$City.gr)
+boxplot(train$revenue ~ train$City.Group)
 boxplot(train$revenue ~ train$Type)
 boxplot(train$revenue ~ train$City)
 boxplot(train$revenue)
