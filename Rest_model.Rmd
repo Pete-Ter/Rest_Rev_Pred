@@ -108,6 +108,21 @@ test$Prediction
 Write(test)
 ```
 
+```{r documenting results}
+sink('results.txt', append=T)
+
+print(Sys.time())
+cat("\n Predictors: \n")
+cat(names(train))
+cat('\n rfGrid: \n')
+print(rfGrid[which.min(mean.met), ])
+
+cat("\n CV RMSE: \n")
+print(mean.met[which.min(mean.met)])
+cat("\n \n \n")
+sink()
+```
+
 ```{r runRF function}
 ############################################################################################################
 # Function to run Random Forest model
