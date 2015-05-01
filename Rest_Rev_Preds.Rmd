@@ -460,7 +460,7 @@ train$P24 <- NULL
 
 ```{r runRF}
 rFGrid <-  expand.grid(mtry=2:5, maxnodes=seq(5,14), nodesize=seq(6,12), 
-                       ntree=c(45, 75, 150, 250, 550))
+                       ntree=c(75, 150, 250, 550))
 
 
 ############################################################################################################
@@ -510,7 +510,6 @@ test$Prediction
 
 
 ```{r CrossVal}
-
 
 CrossVal <- function(data, y, mod, folds, number, params){
   "y is the string name of the response"

@@ -1,0 +1,163 @@
+---
+title: "Rest Rev Plots"
+author: "Peter Terlecky"
+date: "April 30, 2015"
+output: html_document
+---
+
+```{r load data}
+train <- read.csv('data/train.csv', header = T)
+test <- read.csv('data/test.csv', header = T)
+```
+
+```{r boxplots}
+hist(train$revenue)
+boxplot(train$revenue)
+
+boxplot(train$revenue ~ train$City.Group)
+table(train$City.Group)
+
+boxplot(train$revenue ~ train$Type)
+table(train$Type)
+
+boxplot(train$revenue ~ train$City)
+table(train$City)
+
+
+
+train$Open.Date <- as.Date(train$Open.Date, format = "%m/%d/%Y")
+#train$Open.yr <- as.factor(format(train$Open.Date, "%Y")) 
+train$Open.days <- as.numeric(as.Date("2015-01-01")-train$Open.Date)
+#Open.Date <- train$Open.Date
+train$Open.Date <- NULL
+
+plot(train$Open.days, train$revenue)
+boxplot(train$Open.days)
+
+
+train$City.gr <- as.factor(ifelse(train$City %in% "Ä°stanbul", "Ä°stanbul", ifelse(train$City %in% "Ankara", "Ankara", as.character(train$City.Group))))
+
+boxplot(train$revenue ~ train$City.gr)
+
+table(train$City.gr)
+
+
+table(train$City.Group, train$Type)
+
+```
+
+
+```{r P plots}
+plot(train$P1, train$revenue)
+table(train$P1)
+
+plot(train$P2, train$revenue)
+table(train$P2)
+
+plot(train$P3, train$revenue)
+table(train$P3)
+
+plot(train$P4, train$revenue)
+table(train$P4)
+
+plot(train$P5, train$revenue)
+table(train$P5)
+
+plot(train$P6, train$revenue)
+table(train$P6)
+
+plot(train$P7, train$revenue)
+table(train$P7)
+
+plot(train$P8, train$revenue)
+table(train$P8)
+
+plot(train$P9, train$revenue)
+table(train$P9)
+
+plot(train$P10, train$revenue)
+table(train$P10)
+
+plot(train$P11, train$revenue)
+table(train$P11)
+
+plot(train$P12, train$revenue)
+table(train$P12)
+
+plot(train$P13, train$revenue)
+table(train$P13)
+
+plot(train$P14, train$revenue)
+table(train$P14)
+
+plot(train$P15, train$revenue)
+table(train$P15)
+
+plot(train$P16, train$revenue)
+table(train$P16)
+
+plot(train$P17, train$revenue)
+table(train$P17)
+
+plot(train$P18, train$revenue)
+table(train$P18)
+
+plot(train$P19, train$revenue)
+table(train$P19)
+
+plot(train$P20, train$revenue)
+table(train$P20)
+
+plot(train$P21, train$revenue)
+table(train$P21)
+
+plot(train$P22, train$revenue)
+table(train$P22)
+
+plot(train$P23, train$revenue)
+table(train$P23)
+
+plot(train$P24, train$revenue)
+table(train$P24)
+
+plot(train$P25, train$revenue)
+table(train$P25)
+
+plot(train$P26, train$revenue)
+table(train$P26)
+
+plot(train$P27, train$revenue)
+table(train$P27)
+
+plot(train$P28, train$revenue)
+table(train$P28)
+
+plot(train$P29, train$revenue)
+table(train$P29)
+
+plot(train$P30, train$revenue)
+table(train$P30)
+
+plot(train$P31, train$revenue)
+table(train$P31)
+
+plot(train$P32, train$revenue)
+table(train$P32)
+
+plot(train$P33, train$revenue)
+table(train$P33)
+
+plot(train$P34, train$revenue)
+table(train$P34)
+
+plot(train$P35, train$revenue)
+table(train$P35)
+
+plot(train$P36, train$revenue)
+table(train$P36)
+
+plot(train$P37, train$revenue)
+table(train$P37)
+
+```
+
