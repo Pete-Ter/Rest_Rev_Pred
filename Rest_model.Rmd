@@ -82,7 +82,7 @@ test$P36.ind.3 <- ifelse(test$P36==3,1,0)
 
 #train <- select(train, revenue, Type, Open.days, City.Group, P2.ind.2, P2.ind.3, P17.ind, P18.ind.4, P18.ind.12, P36.ind.3, P36, P2, P17, P18, Ank.ind)
 
-train.tr <- select(train, Open.days, City.Group, revenue, P16, P17, P17.ind, P36, P2, P37, P28, P2.ind.2, P18)
+train <- select(train, Open.days, City.Group, revenue, P16, P17, P17.ind, P36, P2, P37, P28, P2.ind.2, P18)
 
 rf.form <- revenue ~ .
 
